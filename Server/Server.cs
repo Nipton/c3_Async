@@ -11,28 +11,41 @@ namespace Server
 {
     internal class Server
     {
-         public static void StartServer()
+        public static async Task StartServer()
         {
-            IPEndPoint remotePoint = new IPEndPoint(IPAddress.Any, 0);
+            CancellationTokenSource cts = new CancellationTokenSource();
+            CancellationToken token = cts.Token;
+            //IPEndPoint remotePoint = new IPEndPoint(IPAddress.Any, 0);
             try
             {
                 using UdpClient server = new UdpClient(5000);
-                server.Client.ReceiveTimeout = 10000;
+                //server.Client.ReceiveTimeout = 10000;
                 Console.WriteLine("Сервер запущен. Нажмите любую клавишу для остановки. ");
-                new Thread(() => { Console.ReadKey(); Environment.Exit(0); }).Start();
-                while (true)
+                //new Thread(() => { Console.ReadKey(); Environment.Exit(0); }).Start();
+                Task task = new Task(() => { Console.ReadKey(); Environment.Exit(0); });
+                task.Start();
+                while (!token.IsCancellationRequested)
                 {
-                    var buffer = server.Receive(ref remotePoint);
-                    string data = Encoding.UTF8.GetString(buffer);
-                    Thread thread = new Thread(() =>
+                    var buffer = await server.ReceiveAsync();
+                    string data = Encoding.UTF8.GetString(buffer.Buffer);
+                    //Thread thread = new Thread(() =>
+                    //{
+                    await Task.Run(async () =>
                     {
-                        var mes = Message.FromJson(data);
+                        var mes = Message.FromJson(data);                       
                         Console.WriteLine(mes);
                         Message answerMes = new Message() { Date = DateTime.Now, Name = "Server", Text = "Сервер принял запрос" };
+                        if (mes!.Text == "Close")
+                        {
+                            Console.WriteLine("Сервер заканчивает работу.");
+                            answerMes.Text = "Сервер заканчивает работу.";
+                            cts.Cancel();
+                        }
                         byte[] answer = Encoding.UTF8.GetBytes(answerMes.ToJson());
-                        server.Send(answer, remotePoint);
+                        await server.SendAsync(answer, buffer.RemoteEndPoint);
                     });
-                    thread.Start();
+                    //});
+                    //thread.Start();
                 }
             }
             catch (SocketException)
